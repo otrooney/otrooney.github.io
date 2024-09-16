@@ -4,6 +4,9 @@ title:  "ReSTIR GSGI - Fast Ray Traced GI with Virtual Lights"
 date:   2024-09-15 16:46:12 +0100
 categories: jekyll update
 ---
+
+![GSGI arch comparison](/img/gsgi/gsgi_arch_comparison.jpg)
+
 Today I'm going to talk about a ray traced global illumination technique which I'm calling ReSTIR Geometry Sampling Global Illumination, or GSGI for short. It's based around the ReSTIR direct lighting algorithm, and aims to achieve the following goals:
 
 - Very high speed
