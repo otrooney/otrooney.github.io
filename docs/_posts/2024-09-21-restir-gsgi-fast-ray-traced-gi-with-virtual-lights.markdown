@@ -1,9 +1,11 @@
 ---
 layout: post
-title: "ReSTIR GSGI - Fast Ray Traced GI with Virtual Lights"
+title: "ReSTIR_GSGI"
 date: 2024-09-21 15:00:00s +0100
 categories: global-illumination
 ---
+
+# ReSTIR GSGI - Fast Ray Traced GI with Virtual Lights
 
 ![GSGI arch comparison](/docs/img/gsgi/gsgi_arch_comparison.jpg)
 
