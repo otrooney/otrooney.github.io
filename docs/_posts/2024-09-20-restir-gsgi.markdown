@@ -81,7 +81,7 @@ Once a source light sample is chosen, diffuse lighting is calculated from that s
 
 The radiance of the virtual light $R$ is scaled according to the sampling density $D$ and the sum of the weights $W_s$ for the ray used to generate that sample:
 
-$R \propto {\frac {W_s K} D}$
+$$R \propto {\frac {W_s K} D}$$
 
 An additional scaling factor $K$ is required. This could be calculated from the total geometry surface area in the scene, or tuned manually for artistic effect.
 
