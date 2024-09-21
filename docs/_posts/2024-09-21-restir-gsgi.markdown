@@ -1,7 +1,7 @@
 ---
 layout: post
 title: "ReSTIR_GSGI"
-date: 2024-09-21 14:00:00s +0100
+date: 2024-09-21 12:00:00s +0100
 categories: global-illumination
 ---
 
