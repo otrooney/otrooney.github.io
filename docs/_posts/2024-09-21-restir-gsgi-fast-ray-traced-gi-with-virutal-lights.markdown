@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "ReSTIR GSGI - Fast Ray Traced GI with Virtual Lights"
-date:   2024-09-15 16:46:12 +0100
+date:   2024-09-21 15:00:00s +0100
 categories: jekyll update
 ---
 
@@ -17,7 +17,7 @@ Today I'm going to talk about a ray traced global illumination technique which I
 - Can be tuned for very fast lighting response
 - Good enough quality
 
-The last point is obviously subjective. The authors of the original ReSTIR paper have also created a technique called ReSTIR GI, which extends ReSTIR's resampling approach to global illumination. ReSTIR GI produces very high quality results, and can do so faster than previous solutions which offer similar quality, but still has a high performance cost for a real-time use case like a videogame.
+The last point is obviously subjective. Our comparison will be ReSTIR GI, which extends ReSTIR's resampling approach to global illumination. ReSTIR GI produces very high quality results, and can do so faster than previous solutions which offer similar quality, but still has a high performance cost for a real-time use case like a videogame.
 
 ReSTIR GSGI uses a very different approach to ReSTIR GI, but I'll be comparing it to ReSTIR GI in both performance and quality. The goal is to achieve around an order of magnitude faster performance, making it viable for real-time use on mid-range hardware, while still achieving quality which is subjectively good enough.
 
@@ -79,9 +79,9 @@ We then perform a separate pass to calculate the lighting for each of these geom
 
 Once a source light sample is chosen, diffuse lighting is calculated from that source light to the geometry sample, and a virtual light is created at that point to represent the diffuse reflected light. Although you could represent these as point lights, for my example code I've used disk lights, as it reduces noise, as we can increase the radius in proportion to the distance from the camera, which corrects for the $1/d^2$ bias introduced by the radial sampling.
 
-The radiance of the virtual light is scaled according to the sampling density $D$ and the sum of the weights $W_s$ for the ray used to generate that sample:
+The radiance of the virtual light $R$ is scaled according to the sampling density $D$ and the sum of the weights $W_s$ for the ray used to generate that sample:
 
-$W_s K/D$
+$R \propto {\frac {W_s K} D}$
 
 An additional scaling factor $K$ is required. This could be calculated from the total geometry surface area in the scene, or tuned manually for artistic effect.
 
@@ -247,6 +247,7 @@ As I'm only learning the field, there's a good chance that I've left plenty of b
 
 ## Useful Links
 
+- [Github repo containing my GSGI implementation](https://github.com/otrooney/RTXDI)
 - [Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting](https://cs.dartmouth.edu/~wjarosz/publications/bitterli20spatiotemporal.html)
 - [ReSTIR GI: Path Resampling for Real-Time Path Tracing](https://research.nvidia.com/publication/2021-06_restir-gi-path-resampling-real-time-path-tracing)
 - [Understanding The Math Behind ReStir DI](https://agraphicsguynotes.com/posts/understanding_the_math_behind_restir_di/)
