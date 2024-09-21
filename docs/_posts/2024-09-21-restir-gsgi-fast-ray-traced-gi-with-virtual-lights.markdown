@@ -1,8 +1,8 @@
 ---
 layout: post
-title:  "ReSTIR GSGI - Fast Ray Traced GI with Virtual Lights"
-date:   2024-09-21 15:00:00s +0100
-categories: jekyll update
+title: "ReSTIR GSGI - Fast Ray Traced GI with Virtual Lights"
+date: 2024-09-21 15:00:00s +0100
+categories: global-illumination
 ---
 
 ![GSGI arch comparison](/docs/img/gsgi/gsgi_arch_comparison.jpg)
@@ -21,7 +21,7 @@ The last point is obviously subjective. Our comparison will be ReSTIR GI, which 
 
 ReSTIR GSGI uses a very different approach to ReSTIR GI, but I'll be comparing it to ReSTIR GI in both performance and quality. The goal is to achieve around an order of magnitude faster performance, making it viable for real-time use on mid-range hardware, while still achieving quality which is subjectively good enough.
 
-As we'll see by the end of this article, my current implementation of GSGI is capable of running at a very high speed, and can produce good results in certain cirsumstances. However, it can struggle with more complex lighting scenarios, which could limit its usefulness, or require further work to address.
+As we'll see by the end of this article, my current implementation of GSGI is capable of running at a very high speed, and can produce good results in certain circumstances. However, it can struggle with more complex lighting scenarios, which could limit its usefulness, or require further work to address.
 
 ## ReSTIR
 
@@ -63,7 +63,7 @@ As you can see from the diagram, the surface area within the angle around the ra
 
 If we wanted perfectly uniform sampling in world space, then we could use $d^2/cos(θ)$ as our weight. However, if we use $1/cos(θ)$ as our weight instead, then we bias the sampling to the tune of $1/d^2$, which is desirable for the reasons described above.
 
-Once caveat of this approach to geometry sampling is that triangles which are close to colinear with the camera position (ie have a very tight angle to the camera) have a low probability of being sampled. Using $1/cos(θ)$ as the weight makes it very likely that these triangles will be sampled if they're hit by a ray, but the probability of them being hit could be very low. This could present itself as noise on light reflected from these surfaces. To counteract this, we can randomly displace the origin of the geometry sampling rays around the camera location. This doesn't introduce bias, but should help reduce this noise.
+Once caveat of this approach to geometry sampling is that triangles which are close to collinear with the camera position (ie have a very tight angle to the camera) have a low probability of being sampled. Using $1/cos(θ)$ as the weight makes it very likely that these triangles will be sampled if they're hit by a ray, but the probability of them being hit could be very low. This could present itself as noise on light reflected from these surfaces. To counteract this, we can randomly displace the origin of the geometry sampling rays around the camera location. This doesn't introduce bias, but should help reduce this noise.
 
 For each ray, we store details about the chosen geometry sample in a G buffer, including the sum of weights, which are used to generate the virtual light.
 
@@ -151,7 +151,7 @@ This is why a lifespan of 30 frames was used in the examples. The default maximu
 
 ### Directionality of Initial Light Samples
 
-ReSTIR DI supports a variety of methods of choosing the intial light samples for each pixel. For the examples above, I have used a technique called ReGIR, which divides the scene into cells and presamples a large number of lights for each cell, with each pixel then sampling from the pool of presampled lights ReGIR prepared for the cell it's in.
+ReSTIR DI supports a variety of methods of choosing the initial light samples for each pixel. For the examples above, I have used a technique called ReGIR, which divides the scene into cells and presamples a large number of lights for each cell, with each pixel then sampling from the pool of presampled lights ReGIR prepared for the cell it's in.
 
 ReGIR, along with the alternative presampling options, doesn't care about what direction these light sources are coming from, and just considers general illumination over the volume of the cell. This is no problem for diffuse lighting, as if you have a pool of presampled lights, then for any given surface you will need only a handful of samples before you're likely to find one which contributes meaningfully to the diffuse lighting of that surface.
 
@@ -221,11 +221,11 @@ In the example scene, typically somewhere around 80% of virtual lights end up fa
 
 Resampling is more difficult with virtual light samples, though. Spatial resampling could be possible, but it would require geometry samples to be stored in a data structure such that they could quickly find nearby samples, and even then would likely be far less effective than spatial resampling in ReSTIR DI, as the spatial samples will be much less similar on average.
 
-Temporal resampling would be similarly challening, as there would not necessarily be a sufficiently similar geometry sample from a previous frame.
+Temporal resampling would be similarly challenging, as there would not necessarily be a sufficiently similar geometry sample from a previous frame.
 
 ### Async Compute
 
-The example code runs each GSGI pass standalone, however due to the relatively low number of threads, hardware utilisation isn't particularly high. Running the GSGI passes asyncronously alongside other passes should increase hardware utilisation and improve performance.
+The example code runs each GSGI pass standalone, however due to the relatively low number of threads, hardware utilisation isn't particularly high. Running the GSGI passes asynchronously alongside other passes should increase hardware utilisation and improve performance.
 
 ## Future Work
 
