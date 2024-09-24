@@ -4,7 +4,7 @@ title: "Directional ReGIR"
 date: 2024-09-24 12:00:00s +0100
 ---
 
-When rendering scenes with a large number of light sources, efficiently sampling those light sources is an important consideration. Uniform random sampling is unlikely to give good results, as for a given surface a large proportion of lights in the scene may provide little to no illumination. Therefore, there exist several techniques for light sampling which aim to efficiently sample light sources which provide meaningful lighting to a given point.
+When rendering scenes with a large number of lights, efficiently sampling those light sources is an important consideration. Uniform random sampling is unlikely to give good results, as for a given surface a large proportion of lights in the scene may provide little to no illumination. Therefore, there exist several techniques for light sampling which aim to efficiently sample light sources which provide meaningful lighting to a given point.
 
 We'll be looking at an existing sampling algorithm called ReGIR, and a modfication of that algorithm I'm proposing called Directional ReGIR. The goal of Directional ReGIR is to incorporate the direction of the light source to the surface being shaded in the sampling algorithm. By taking into account the direction of the light sources, it would be possible to select light sources by sampling directions from the BRDF of the surface. In particular, this should achieve more efficient sampling of light sources contributing to specular lighting.
 
@@ -16,7 +16,7 @@ ReGIR doesn't depend on any particular grid arrangement, but for the purposes of
 
 Here's an example of the cells visualised in a sample scene:
 
-![GSGI arch comparison](/docs/img/dirregir/regir_cells_visualisation.png)
+![ReGIR cell visualisation](/docs/img/dirregir/regir_cells_visualisation.jpeg)
 
 Each ReGIR cell is divided into some number of reservoirs, or slots, and for each reservoir a number of light samples are taken and a sample is chosen using reservoir sampling. For example, if ReGIR is configured to have 256 slots per cell, and 8 samples per slot, then 2048 total samples required to build each cell.
 
@@ -30,7 +30,7 @@ One limitation of the standard ReGIR implementation is that the direction of lig
 
 In my post on GSGI, though, I showed a case with a very large number of relatively dim virtual light sources being used for global illumination. Specular reflections of those light sources were a source of noise and boiling artifacts, though, in part becuase the probability of those light sources being sampled for pixels where they provide specular illumination is very low.
 
-![GSGI pole comparison](/docs/img/gsgi/gsgi_counter_comparison.jpg)
+![GSGI specular comparison](/docs/img/gsgi/gsgi_counter_comparison.jpg)
 
 In the rightmost image above, we can see the issues with specular reflections of a very large number of virtual light sources.
 
@@ -84,27 +84,87 @@ groupshared uint accessLockArray[16][16];
 
 These arrays are all 16x16, matching the grid, and their size is part of the reason a 16x16 grid was chosen, as it allows them to fit in shared memory without limiting the number of active workgroups (at least on the GPU I'm using to test). The `accessLockArray` is used to manage access to the shared memory, and the others store the required data for each location on the grid.
 
-When a sample has been generated, the atomic function `InterlockedCompareExchange` is used to check and set the lock for that grid location before updating the values in shared memory.
-
-```
-for (uint j = 0; j < MAX_LOCK_ATTEMPTS; j++)
-{
-    InterlockedCompareExchange(accessLockArray[arrayLoc.x][arrayLoc.y], LOCK_OPEN, threadIndex, lockValue);
-    if (lockValue == LOCK_OPEN)
-    {
-        weightSumArray[arrayLoc.x][arrayLoc.y] += risWeight;
-
-        if (risRnd * weightSumArray[arrayLoc.x][arrayLoc.y] < risWeight)
-        {
-            lightIndexArray[arrayLoc.x][arrayLoc.y] = rndLight;
-            selectedTargetPdfArray[arrayLoc.x][arrayLoc.y] = targetPdf;
-        }
-        nSamplesArray[arrayLoc.x][arrayLoc.y] += 1;
-        accessLockArray[arrayLoc.x][arrayLoc.y] = LOCK_OPEN;
-        break;
-    }
-}
-```
+When a sample has been generated, the atomic function `InterlockedCompareExchange` is used to check and set the lock for that grid location before updating the other values in shared memory.
 
 This implementation has a relatively minor performance impact compared to standard ReGIR, as we'll see later.
+
+When sampling from a cell using Directional ReGIR, I have implemented several options, including uniform hemisphere sampling and BRDF sampling. The BRDF sampling option can also mix in a proportion of uniform hemisphere samples.
+
+### Results
+
+As our first comparison point, let's look at a screenshot taken using a standard ReGIR implemenation, with 256 slots per cell and 8 samples per slot. Here we're using ReSTIR with both temporal and spatial resampling, and denoising and DLSS (with input and output resolutions both set to 1080p). The examples are all running on an RTX 3070 desktop graphics card.
+
+![ReGIR standard settings](/docs/img/dirregir/regir_256_denoised_jitter.jpeg)
+
+Next, we'll look at a screenshot with identical settings, but switching to Directional ReGIR:
+
+![Directional ReGIR standard settings](/docs/img/dirregir/directional_regir_denoised_jitter.jpeg)
+
+Something obviously isn't quite right here. The floor at the bottom of the image is properly illuminated, but other areas of the image, including the back wall, are very dark.
+
+For a more direct comparison, let's remove ReSTIR's resampling, and the denoising and DLSS steps, so we're just looking at the initial samples generated by ReGIR and Directional ReGIR. Here's ReGIR:
+
+![ReGIR initial samples](/docs/img/dirregir/regir_256_initial_samples_jitter.png)
+
+And here's Directional ReGIR:
+
+![Directional ReGIR initial samples](/docs/img/dirregir/directional_regir_initial_samples_jitter.png)
+
+We can see that Directional ReGIR seems to be producing good initial samples pretty consistently on the floor at the bottom of the image, but fewer good samples on other areas. This is particularly noticeable on the back wall, where ReGIR is able to generate samples about as well as anywhere else on the image, but Directional ReGIR generates almost no good samples.
+
+As far as I can tell, what's happening here is relating to the jitter discussed earlier. When taking an intial sample for a pixel, ReGIR doesn't necessarily use the cell it's in, but instead applies a random jitter to the pixel's world space location and chooses a cell based on that jittered position. This reduces discretization artifacts (ie a visible grid structure on the screen), and works well for ReGIR, as a light which provides meaningful illumination to one cell probably provides meaningful illumination to neighbouring cells.
+
+Directional ReGIR complicates this, though, because we rely on the direction of lights with respect to points in the cell, and moving the point changes the direction of the light relative to that point.
+
+As an example, consider the following diagram:
+
+(add diagram)
+
+For a relatively close light, applying jitter to the position we're sampling from can cause us to miss relevant lights, as the direction of the light can change substantially. For distant lights, though, jitter has less of an effect, as the direction only changes slightly.
+
+This is the reason Directional ReGIR produces good samples for the floor in the image above, as the light sources are distant enough that the jitter being applied doesn't prevent the directional sampling from picking up relevant light samples. For other surfaces, though, they are mainly illuminated by close light sources, which are much less likely to be sampled for pixels after jitter is applied.
+
+To illustrate, let's set the jitter to zero, and look at the same scene with just the initial samples again. First, here's standard ReGIR:
+
+![ReGIR initial samples without jitter](/docs/img/dirregir/regir_256_initial_samples_no_jitter.png)
+
+And here's Directional ReGIR:
+
+![Directional ReGIR initial samples without jitter](/docs/img/dirregir/directional_regir_initial_samples_no_jitter.png)
+
+The first thing we see is clear artifacts of the cell structure in both images, illustrating why jitter is applied in the first place.
+
+Secondly, we see in the second image that by removing jitter, Directional ReGIR can produce much better samples for areas that were dark before, like the back wall. In fact, if we define a good sample as one which isn't occluded from its light source, then Directional ReGIR is producing more good samples than standard ReGIR here.
+
+The hit percentage for rays during initial sampling (which are occlusion test rays) is 92% for ReGIR and 89% for Directional ReGIR, so Directional ReGIR is resulting in about 37% more good samples which aren't occluded. The opposite is true with the default amount of jitter applied, where standard ReGIR produces more good samples than Directional ReGIR.
+
+Subjectively, we also seem to be getting better samples for lights contributing to specular lighting with Directional ReGIR.
+
+The challenge here is that, without jitter, discretization artifacts are clearly visible on screen, but with jitter, Directional ReGIR struggles to produce good results for the reasons described above.
+
+One option, which has an obvious cost associated with it, is to use smaller cells (and therefore a larger number of them), potentially with an increased sample count. Let's look what happens when we use about 4x as many cells, and 32 samples per thread during grid building and 32 initial samples per pixel (up from 8 in each case). First, here's standard ReGIR:
+
+![ReGIR with small cells and increased sample counts](/docs/img/dirregir/regir_small_cells_many_samples.png)
+
+And here's Directional ReGIR:
+
+![Directional ReGIR with small cells and increased sample counts](/docs/img/dirregir/directional_regir_small_cells_many_samples.png)
+
+Directional ReGIR benefits more from smaller cells and increase sample counts than standard ReGIR does. We can see an 89% hit rate during initial sampling for ReGIR, compared to an 81% hit rate for Directional ReGIR, indicating that Directional ReGIR produces about 73% more good (ie non-occluded) samples than standard ReGIR with these settings.
+
+However, the performance impact is significant, with the Directional ReGIR grid building pass taking 5ms alone, along with a more expensive initial sampling pass. Furthermore, discretization artifacts are still visible, and introducing jitter will still reintroduce the issues we saw above. It's possible that with sufficiently many small cells, and a very small amount of jitter, that Directional ReGIR may provide good results without discretization artifacts, but it seems that the performance hit of doing so would likely to be too costly.
+
+## Future Work
+
+### Randomised Grid Building
+
+The ReGIR implementation provided in the RTXDI that I'm using for this example builds the physical strucutre of the grid in a deterministic way. That is, the cells will always occupy the same positions relative to the camera from one frame to the next.
+
+It could be beneficial to apply some randomisation to this process. If cell locations varied in a random manner from one frame to the next, then discretization artifacts (boundaries between cells) should appear in different locations every frame, and ReSTIR's temporal resampling should significantly reduce their visibility due to sample reuse across multiple frames. It's possible that jitter could then be reduced significantly, without artefacts being noticeable after spatial and temporal resampling.
+
+### Bias Correction
+
+One topic I didn't touch on above is that, in my current implementation, Directional ReGIR is biased, as we're no longer uniformly sampling light samples, but instead preferentially sampling them based on direction.
+
+This shouldn't be too difficult to correct for, as we can calculate the PDF of each of the different sampling techniques, and apply the appropriate correction when sampling from Directional ReGIR. However, due to the issues shown above I didn't get around to implementing bias correction, so that's something to add in the future.
 
