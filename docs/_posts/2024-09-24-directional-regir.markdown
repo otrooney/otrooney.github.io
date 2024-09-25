@@ -6,31 +6,31 @@ date: 2024-09-24 12:00:00s +0100
 
 When rendering scenes with a large number of lights, efficiently sampling those light sources is an important consideration. Uniform random sampling is unlikely to give good results, as for a given surface a large proportion of lights in the scene may provide little to no illumination. Therefore, there exist several techniques for light sampling which aim to efficiently sample light sources which provide meaningful lighting to a given point.
 
-We'll be looking at an existing sampling algorithm called ReGIR, and a modfication of that algorithm I'm proposing called Directional ReGIR. The goal of Directional ReGIR is to incorporate the direction of the light source to the surface being shaded in the sampling algorithm. By taking into account the direction of the light sources, it would be possible to select light sources by sampling directions from the BRDF of the surface. In particular, this should achieve more efficient sampling of light sources contributing to specular lighting.
+We'll be looking at an existing sampling algorithm called ReGIR, and a modification of that algorithm I'm proposing called Directional ReGIR. The goal of Directional ReGIR is to incorporate the direction of the light source to the surface being shaded in the sampling algorithm. By taking into account the direction of the light sources, it would be possible to select light sources by sampling directions from the BRDF of the surface. In particular, this should achieve more efficient sampling of light sources contributing to specular lighting.
 
 ## ReGIR
 
-ReGIR is a grid-based presampling algorithm. It divides the scene up into a grid of cells, and for each sell presamples light samples according to their light contribution across the volume of the cell. For each pixel, samples are then taken from those cells.
+ReGIR is a grid-based presampling algorithm. It divides the scene up into a grid of cells, and for each cell presamples lights according to their light contribution across the volume of the cell. For each pixel, samples are then taken from those cells.
 
-ReGIR doesn't depend on any particular grid arrangement, but for the purposes of these examples, I'm going to use the Onion structure implemented in the RTXDI sample app. This builds cells in layers centered around the camera location, with smaller cells closer to the camera, and larger cells further away.
+ReGIR doesn't depend on any particular grid arrangement, but for the purposes of these examples, I'm going to use the Onion structure implemented in the RTXDI sample app. This builds cells in layers centred around the camera location, with smaller cells closer to the camera, and larger cells further away.
 
 Here's an example of the cells visualised in a sample scene:
 
-![ReGIR cell visualisation](/docs/img/dirregir/regir_cells_visualisation.jpeg)
+![ReGIR cell visualisation](/img/dirregir/regir_cells_visualisation.jpeg)
 
-Each ReGIR cell is divided into some number of reservoirs, or slots, and for each reservoir a number of light samples are taken and a sample is chosen using reservoir sampling. For example, if ReGIR is configured to have 256 slots per cell, and 8 samples per slot, then 2048 total samples required to build each cell.
+Each ReGIR cell is divided into some number of reservoirs, or slots, and for each reservoir a number of light samples are taken and a sample is chosen using reservoir sampling. For example, if ReGIR is configured to have 256 slots per cell, and 8 samples per slot, then 2048 total samples are required to build each cell.
 
-When a pixel samples from those ReGIR cells, first a random jitter is applied to its position, to avoid discretization artifacts. Then, samples are taken from the ReGIR cell at that jittered position, choosing one of the reservoirs randomly per sample. If 8 initial samples are taken per pixel, and ReGIR is built using 8 samples per slot, then 64 total light samples are being considered per pixel, before spatial or temporal resampling.
+When a pixel samples from those ReGIR cells, first a random jitter is applied to its position, to avoid discretisation artifacts. Then, samples are taken from the ReGIR cell at that jittered position, choosing one of the reservoirs randomly per sample. If 8 initial samples are taken per pixel, and ReGIR is built using 8 samples per slot, then 64 total light samples are being considered per pixel, before spatial or temporal resampling.
 
 ## Directional ReGIR
 
 ### Motivation
 
-One limitation of the standard ReGIR implementation is that the direction of light samples isn't taken into account. Light samples are weighted based on their illumination over the volume of the cell. For diffuse lighting, this will be a reasonably good approximation of the lighting on a given pixel within the cell. Even for specular illumination with a relatively low number of brigher light sources, the probability of a pixel picking up a sample for a light source providing meaningful specular illumination is quite high, particularly after resampling.
+One limitation of the standard ReGIR implementation is that the direction of light samples isn't taken into account. Light samples are weighted based on their illumination over the volume of the cell. For diffuse lighting, this will be a reasonably good approximation of the lighting on a given pixel within the cell. Even for specular illumination with a relatively low number of brighter light sources, the probability of a pixel picking up a sample for a light source providing meaningful specular illumination is quite high, particularly after resampling.
 
-In my post on GSGI, though, I showed a case with a very large number of relatively dim virtual light sources being used for global illumination. Specular reflections of those light sources were a source of noise and boiling artifacts, though, in part becuase the probability of those light sources being sampled for pixels where they provide specular illumination is very low.
+In my post on GSGI, though, I showed a case with a very large number of relatively dim virtual light sources being used for global illumination. Specular reflections of those light sources were a source of noise and boiling artifacts, in part because the probability of those light sources being sampled for pixels where they provide specular illumination is very low.
 
-![GSGI specular comparison](/docs/img/gsgi/gsgi_counter_comparison.jpg)
+![GSGI specular comparison](/img/gsgi/gsgi_counter_comparison.jpg)
 
 In the rightmost image above, we can see the issues with specular reflections of a very large number of virtual light sources.
 
@@ -44,7 +44,7 @@ Directional ReGIR uses the same cell structure as the existing ReGIR algorithm, 
 
 To do this, we organise reservoirs in the cell in a 2D grid, of 16x16 slots. Directions are mapped to positions in this grid using octahedral mapping, which is a technique which maps directions on the unit sphere to positions within a square by treating the sphere as an octahedron, and unfolding it into a square on a 2D plane.
 
-(insert diagram)
+![Octahedral mapping](/img/dirregir/octahedral_mapping.png)
 
 Octahedral mapping is commonly used for efficient storage of surface normals (for example in G buffers), and should be both quick and accurate enough for our purposes.
 
@@ -68,9 +68,9 @@ The major challenge involved in implementing this algorithm is that it involves 
 
 My approach to implementing Directional ReGIR involves group shared memory and atomic functions. Group shared memory is memory shared by all threads in a workgroup, located close to the execution units (ie. within the SM on Nvidia GPUs, or within the CU on AMD GPUs). Group shared memory can be accessed with much lower latency than VRAM.
 
-Atomic functions are shader functions which are guaranteed to execute atomically as a single operation. For example, if a thread performed a read from a memory location, modified the contents, and then wrote the result back to the same memory location as a separate operation, then another thread may have changed the contents between the read and write operations. Atomic functions can perform a read and write in a single operation, which can be useful for implementing thread safe code.
+Atomic functions are shader functions which are guaranteed to execute atomically as a single operation. For example, without atomic functions, if a thread performed a read from a memory location, modified the contents, and then wrote the result back to the same memory location as a separate operation, then another thread may have changed the contents between the read and write operations. Atomic functions can perform a read and write in a single operation, which can be useful for implementing thread safe code.
 
-Atomic functions can be very expensive, but the cost of using them on shared memory is much lower, due to the reduced latency compared to VRAM. This means that, if we can keep all relevant data in shared memory, we can use atomic functions as part of a thread-safe way of managing access between threads with a minimal performance impact.
+Atomic functions can be very expensive, but the cost of using them on shared memory is much lower, due to the reduced latency compared to VRAM. This means that, if we can keep all relevant data in shared memory, we can use atomic functions as part of a thread-safe way of managing access between threads with minimal performance impact.
 
 In particular, my implementation for populating the grid involves five arrays of group shared memory:
 
@@ -92,45 +92,43 @@ When sampling from a cell using Directional ReGIR, I have implemented several op
 
 ### Results
 
-As our first comparison point, let's look at a screenshot taken using a standard ReGIR implemenation, with 256 slots per cell and 8 samples per slot. Here we're using ReSTIR with both temporal and spatial resampling, and denoising and DLSS (with input and output resolutions both set to 1080p). The examples are all running on an RTX 3070 desktop graphics card.
+As our first comparison point, let's look at a screenshot taken using a standard ReGIR implementation, with 256 slots per cell and 8 samples per slot. Here we're using ReSTIR with both temporal and spatial resampling, and denoising and DLSS (with input and output resolutions both set to 1080p). The examples are all running on an RTX 3070 desktop graphics card.
 
-![ReGIR standard settings](/docs/img/dirregir/regir_256_denoised_jitter.jpeg)
+![ReGIR standard settings](/img/dirregir/regir_256_denoised_jitter.jpeg)
 
 Next, we'll look at a screenshot with identical settings, but switching to Directional ReGIR:
 
-![Directional ReGIR standard settings](/docs/img/dirregir/directional_regir_denoised_jitter.jpeg)
+![Directional ReGIR standard settings](/img/dirregir/directional_regir_denoised_jitter.jpeg)
 
 Something obviously isn't quite right here. The floor at the bottom of the image is properly illuminated, but other areas of the image, including the back wall, are very dark.
 
 For a more direct comparison, let's remove ReSTIR's resampling, and the denoising and DLSS steps, so we're just looking at the initial samples generated by ReGIR and Directional ReGIR. Here's ReGIR:
 
-![ReGIR initial samples](/docs/img/dirregir/regir_256_initial_samples_jitter.png)
+![ReGIR initial samples](/img/dirregir/regir_256_initial_samples_jitter.png)
 
 And here's Directional ReGIR:
 
-![Directional ReGIR initial samples](/docs/img/dirregir/directional_regir_initial_samples_jitter.png)
+![Directional ReGIR initial samples](/img/dirregir/directional_regir_initial_samples_jitter.png)
 
 We can see that Directional ReGIR seems to be producing good initial samples pretty consistently on the floor at the bottom of the image, but fewer good samples on other areas. This is particularly noticeable on the back wall, where ReGIR is able to generate samples about as well as anywhere else on the image, but Directional ReGIR generates almost no good samples.
 
-As far as I can tell, what's happening here is relating to the jitter discussed earlier. When taking an intial sample for a pixel, ReGIR doesn't necessarily use the cell it's in, but instead applies a random jitter to the pixel's world space location and chooses a cell based on that jittered position. This reduces discretization artifacts (ie a visible grid structure on the screen), and works well for ReGIR, as a light which provides meaningful illumination to one cell probably provides meaningful illumination to neighbouring cells.
+As far as I can tell, what's happening here is relating to the jitter discussed earlier. When taking an initial sample for a pixel, ReGIR doesn't necessarily use the cell it's in, but instead applies a random jitter to the pixel's world space location and chooses a cell based on that jittered position. This reduces discretisation artifacts (ie a visible grid structure on the screen), and works well for ReGIR, as a light which provides meaningful illumination to one cell probably provides meaningful illumination to neighbouring cells.
 
 Directional ReGIR complicates this, though, because we rely on the direction of lights with respect to points in the cell, and moving the point changes the direction of the light relative to that point.
 
-As an example, consider the following diagram:
+![Directional light sampling with sample location jitter](/img/dirregir/directional_light_sampling_jitter.png)
 
-(add diagram)
-
-For a relatively close light, applying jitter to the position we're sampling from can cause us to miss relevant lights, as the direction of the light can change substantially. For distant lights, though, jitter has less of an effect, as the direction only changes slightly.
+For a relatively close light, applying jitter to the position we're sampling from can cause us to miss relevant lights, as the direction of the light relative to the new position can change substantially. For distant lights, though, jitter has less of an effect, as the direction only changes slightly.
 
 This is the reason Directional ReGIR produces good samples for the floor in the image above, as the light sources are distant enough that the jitter being applied doesn't prevent the directional sampling from picking up relevant light samples. For other surfaces, though, they are mainly illuminated by close light sources, which are much less likely to be sampled for pixels after jitter is applied.
 
 To illustrate, let's set the jitter to zero, and look at the same scene with just the initial samples again. First, here's standard ReGIR:
 
-![ReGIR initial samples without jitter](/docs/img/dirregir/regir_256_initial_samples_no_jitter.png)
+![ReGIR initial samples without jitter](/img/dirregir/regir_256_initial_samples_no_jitter.png)
 
 And here's Directional ReGIR:
 
-![Directional ReGIR initial samples without jitter](/docs/img/dirregir/directional_regir_initial_samples_no_jitter.png)
+![Directional ReGIR initial samples without jitter](/img/dirregir/directional_regir_initial_samples_no_jitter.png)
 
 The first thing we see is clear artifacts of the cell structure in both images, illustrating why jitter is applied in the first place.
 
@@ -140,31 +138,47 @@ The hit percentage for rays during initial sampling (which are occlusion test ra
 
 Subjectively, we also seem to be getting better samples for lights contributing to specular lighting with Directional ReGIR.
 
-The challenge here is that, without jitter, discretization artifacts are clearly visible on screen, but with jitter, Directional ReGIR struggles to produce good results for the reasons described above.
+The challenge here is that, without jitter, discretisation artifacts are clearly visible on screen, but with jitter, Directional ReGIR struggles to produce good results for the reasons described above.
 
-One option, which has an obvious cost associated with it, is to use smaller cells (and therefore a larger number of them), potentially with an increased sample count. Let's look what happens when we use about 4x as many cells, and 32 samples per thread during grid building and 32 initial samples per pixel (up from 8 in each case). First, here's standard ReGIR:
+One option, which has an obvious cost associated with it, is to use smaller cells (and therefore a larger number of them), potentially with an increased sample count. Let's look what happens when we use about 2x as many cells, and significantly increase the sample count, to 32 samples per thread during grid building and 32 initial samples per pixel (up from 8 in each case). First, here's standard ReGIR:
 
-![ReGIR with small cells and increased sample counts](/docs/img/dirregir/regir_small_cells_many_samples.png)
+![ReGIR with small cells and increased sample counts](/img/dirregir/regir_small_cells_many_samples.png)
 
 And here's Directional ReGIR:
 
-![Directional ReGIR with small cells and increased sample counts](/docs/img/dirregir/directional_regir_small_cells_many_samples.png)
+![Directional ReGIR with small cells and increased sample counts](/img/dirregir/directional_regir_small_cells_many_samples.png)
 
-Directional ReGIR benefits more from smaller cells and increase sample counts than standard ReGIR does. We can see an 89% hit rate during initial sampling for ReGIR, compared to an 81% hit rate for Directional ReGIR, indicating that Directional ReGIR produces about 73% more good (ie non-occluded) samples than standard ReGIR with these settings.
+Directional ReGIR benefits more from smaller cells and increased sample counts than standard ReGIR does. We can see an 89% hit rate during initial sampling for ReGIR, compared to an 81% hit rate for Directional ReGIR, indicating that Directional ReGIR produces about 73% more good (ie non-occluded) samples than standard ReGIR with these settings.
 
-However, the performance impact is significant, with the Directional ReGIR grid building pass taking 5ms alone, along with a more expensive initial sampling pass. Furthermore, discretization artifacts are still visible, and introducing jitter will still reintroduce the issues we saw above. It's possible that with sufficiently many small cells, and a very small amount of jitter, that Directional ReGIR may provide good results without discretization artifacts, but it seems that the performance hit of doing so would likely to be too costly.
+However, the performance impact is significant, with the Directional ReGIR grid building pass taking 5ms alone, along with a more expensive initial sampling pass. Furthermore, discretisation artifacts are still visible, and introducing jitter will still reintroduce the issues we saw above. It's possible that with sufficiently many small cells, and a very small amount of jitter, that Directional ReGIR may provide good results without discretisation artifacts, but it seems that the performance hit of doing so would likely to be too costly.
+
+### Performance
+
+The overall performance impact of Directional ReGIR, compared to standard ReGIR at similar settings, is relatively small. Building the Directional ReGIR grid only costs around an extra 0.1ms over standard ReGIR using default settings, despite the need to use atomic functions to manage memory contention.
+
+There is some additional cost during the initial sample pass, which is partly due to the need to sample surface BRDFs during sampling. There is some scope for optimisation in the current implementation, though.
 
 ## Future Work
 
 ### Randomised Grid Building
 
-The ReGIR implementation provided in the RTXDI that I'm using for this example builds the physical strucutre of the grid in a deterministic way. That is, the cells will always occupy the same positions relative to the camera from one frame to the next.
+The ReGIR implementation provided in the RTXDI code that I'm using for this example builds the physical structure of the grid in a deterministic way. That is, the cells will always occupy the same positions relative to the camera from one frame to the next.
 
-It could be beneficial to apply some randomisation to this process. If cell locations varied in a random manner from one frame to the next, then discretization artifacts (boundaries between cells) should appear in different locations every frame, and ReSTIR's temporal resampling should significantly reduce their visibility due to sample reuse across multiple frames. It's possible that jitter could then be reduced significantly, without artefacts being noticeable after spatial and temporal resampling.
+It could be beneficial to apply some randomisation to this process. If cell locations varied in a random manner from one frame to the next, then discretisation artifacts (boundaries between cells) should appear in different locations every frame, and ReSTIR's temporal resampling should significantly reduce their visibility due to sample reuse across multiple frames. It's possible that jitter could then be reduced significantly, without artifacts being noticeable after spatial and temporal resampling.
 
 ### Bias Correction
 
-One topic I didn't touch on above is that, in my current implementation, Directional ReGIR is biased, as we're no longer uniformly sampling light samples, but instead preferentially sampling them based on direction.
+One topic I didn't touch on above is that, in my current implementation, Directional ReGIR likely introduces some amount of bias, as we're no longer uniformly sampling light samples, but instead preferentially sampling them based on direction.
 
 This shouldn't be too difficult to correct for, as we can calculate the PDF of each of the different sampling techniques, and apply the appropriate correction when sampling from Directional ReGIR. However, due to the issues shown above I didn't get around to implementing bias correction, so that's something to add in the future.
 
+## Closing Comments
+
+Although the current implementation of Directional ReGIR isn't quite capable of replacing standard ReGIR, I do feel that, with further work, it could be a good solution for light sampling. In particular, randomising cell locations during grid building seems like a good avenue for future work, as it could significantly reduce, or eliminate, discretisation artifacts with little to no jitter required, which could remove the major limitation of Directional ReGIR.
+
+
+## Useful Links
+
+- [Github repo containing my Directional ReGIR implementation](https://github.com/otrooney/RTXDI)
+- [Rendering Many Lights with Grid-Based Reservoirs (ReGIR paper)](https://research.nvidia.com/labs/rtr/publication/boksansky2021rendering/)
+- [Survey of Efficient Representations for Independent Unit Vectors (octahedral mapping paper)](https://jcgt.org/published/0003/02/01/)
