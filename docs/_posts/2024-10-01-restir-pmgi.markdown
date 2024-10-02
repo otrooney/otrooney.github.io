@@ -11,7 +11,7 @@ In my post on ReSTIR Geometry Sampling Global Illumination, or GSGI, I wrote abo
 
 ## ReSTIR and Virtual Lights
 
-I'd recommend that you read [my post on GSGI](/2024/09/20/restir-gsgi.html) for a more in-depth discussion on this, but here's a brief intro on ReSTIR, and why virtual lights are a compelling approach to global illuimination when combined with ReSTIR.
+I'd recommend that you read [my post on GSGI](/global-illumination/2024/09/20/restir-gsgi.html) for a more in-depth discussion on this, but here's a brief intro on ReSTIR, and why virtual lights are a compelling approach to global illuimination when combined with ReSTIR.
 
 ReSTIR is a ray traced direct illumination algorithm, which has the benefit of being able to handle a very large number of light sources with minimal performance penalty. If we can represent the indirect illumination being reflected off surfaces as virtual lights, then we can feed these into ReSTIR, and calculate both direct and indirect illumination in a single pass. Because ReSTIR can handle such a large number of light sources, we can use hundreds of thousands, or even millions of virtual lights to represent indirect illumination, and still achieve high levels of performance.
 
