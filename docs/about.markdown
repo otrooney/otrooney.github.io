@@ -4,10 +4,11 @@ title: About
 permalink: /about/
 ---
 
-After several years working as a developer in the field of quantitative finance, I've decided
-to change things up and pursue a new career in real-time rendering. This blog is intended as
-a place to talk about some of the projects I've been working on while teaching myself the new
-field, along with any ideas or thoughts which I think are worth sharing.
+A developer in the field of quantitative finance by day, I tinker with various projects in my
+free time, and have recently begun working on some projects in the area of real-time rendering.
+This blog is intended as a place to talk about some of these projects I've been working on
+while teaching myself the topic, along with any ideas or thoughts which I think are worth
+sharing.
 
 As someone who's only starting out on a journey of learning about computer graphics myself,
 there's a good chance that a lot of what I write will have already been covered elsewhere
